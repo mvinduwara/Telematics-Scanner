@@ -37,14 +37,12 @@ public class DiagnosticsFragment extends Fragment {
         btnScan = view.findViewById(R.id.btn_scan_codes);
         btnClear = view.findViewById(R.id.btn_clear_codes);
 
-        // Initialize empty list and attach adapter
         codeList = new ArrayList<>();
         adapter = new DiagnosticAdapter(codeList);
         recyclerView.setAdapter(adapter);
 
         btnScan.setOnClickListener(v -> {
             Toast.makeText(getContext(), "Requesting codes from ECU...", Toast.LENGTH_SHORT).show();
-            // Simulate receiving data from the Bluetooth OBD-II scanner
             simulateReceivingCodes();
         });
 
@@ -57,7 +55,6 @@ public class DiagnosticsFragment extends Fragment {
         return view;
     }
 
-    // A dummy function to populate the RecyclerView for testing
     private void simulateReceivingCodes() {
         codeList.clear();
         codeList.add(new DiagnosticCode("P0171", "System Too Lean (Bank 1)"));
