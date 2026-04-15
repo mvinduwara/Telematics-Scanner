@@ -1,4 +1,3 @@
-// app/src/main/java/com/example/telematicsscanner/database/AppDatabase.java
 package com.example.telematicsscanner.database;
 
 import android.content.Context;
