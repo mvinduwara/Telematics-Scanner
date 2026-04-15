@@ -1,4 +1,3 @@
-// app/src/main/java/com/example/telematicsscanner/fragments/HistoryFragment.java
 package com.example.telematicsscanner.fragments;
 
 import android.graphics.Color;
@@ -42,65 +41,65 @@ public class HistoryFragment extends Fragment {
     }
 
     private void setupChartAppearance() {
-        // Removes the description text at the bottom right
         Description desc = new Description();
         desc.setText("");
         lineChart.setDescription(desc);
 
-        // Make the chart interactive
         lineChart.setTouchEnabled(true);
         lineChart.setDragEnabled(true);
         lineChart.setScaleEnabled(true);
         lineChart.setDrawGridBackground(false);
+        lineChart.setNoDataText("Loading vehicle telemetry...");
 
-        // Clean up the X-Axis
         XAxis xAxis = lineChart.getXAxis();
         xAxis.setPosition(XAxis.XAxisPosition.BOTTOM);
         xAxis.setDrawGridLines(false);
     }
 
     private void loadChartData() {
-        // Database queries must run on a background thread
         new Thread(() -> {
-            // 1. Get the data from SQLite
             List<TelemetryLog> logs = AppDatabase.getInstance(requireContext())
                     .telemetryDao()
                     .getAllLogsChronological();
 
             if (logs == null || logs.isEmpty()) {
                 requireActivity().runOnUiThread(() ->
-                        Toast.makeText(getContext(), "No driving history found yet.", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(getContext(), "Database empty. Generating Simulator Data!", Toast.LENGTH_LONG).show()
                 );
-                return;
+
+                logs = new ArrayList<>();
+                int simulatedRpm = 800;
+
+                for (int i = 0; i < 50; i++) {
+                    simulatedRpm += (int)(Math.random() * 600) - 200;
+                    if (simulatedRpm < 600) simulatedRpm = 600;
+
+                    logs.add(new TelemetryLog(System.currentTimeMillis() + (i * 1000), simulatedRpm, "90"));
+                }
             }
 
-            // 2. Convert Data into Chart "Entries"
             List<Entry> rpmEntries = new ArrayList<>();
             for (int i = 0; i < logs.size(); i++) {
-                // X = time (index), Y = RPM value
                 rpmEntries.add(new Entry(i, logs.get(i).engineRpm));
             }
 
-            // 3. Style the Line
             LineDataSet dataSet = new LineDataSet(rpmEntries, "Engine RPM");
             dataSet.setColor(Color.parseColor("#EF4444")); // Red line
             dataSet.setLineWidth(2f);
-            dataSet.setDrawCircles(false); // Disable dots for a smooth line
-            dataSet.setDrawValues(false); // Hide the numbers on the line
-            dataSet.setMode(LineDataSet.Mode.CUBIC_BEZIER); // Make it smooth and curvy
+            dataSet.setDrawCircles(false);
+            dataSet.setDrawValues(false);
+            dataSet.setMode(LineDataSet.Mode.CUBIC_BEZIER);
 
-            // Fill underneath the line
             dataSet.setDrawFilled(true);
             dataSet.setFillColor(Color.parseColor("#FCA5A5"));
 
-            // 4. Send to the UI Thread to draw
+            final int logSize = logs.size();
             LineData lineData = new LineData(dataSet);
             requireActivity().runOnUiThread(() -> {
                 lineChart.setData(lineData);
-                // Zooms in automatically if you have thousands of data points
                 lineChart.setVisibleXRangeMaximum(100);
-                lineChart.moveViewToX(logs.size()); // Scroll to the newest data on the right
-                lineChart.invalidate(); // Refresh the chart
+                lineChart.moveViewToX(logSize);
+                lineChart.invalidate();
             });
 
         }).start();
