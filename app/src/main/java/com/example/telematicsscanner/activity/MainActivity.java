@@ -1,4 +1,3 @@
-// app/src/main/java/com/example/telematicsscanner/MainActivity.java
 package com.example.telematicsscanner.activity;
 
 import android.os.Bundle;
@@ -8,6 +7,7 @@ import androidx.fragment.app.Fragment;
 import com.example.telematicsscanner.R;
 import com.example.telematicsscanner.fragments.DashboardFragment;
 import com.example.telematicsscanner.fragments.DiagnosticsFragment;
+import com.example.telematicsscanner.fragments.HistoryFragment;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 
 public class MainActivity extends AppCompatActivity {
@@ -19,13 +19,11 @@ public class MainActivity extends AppCompatActivity {
 
         BottomNavigationView bottomNav = findViewById(R.id.bottom_navigation);
 
-        // Load the DashboardFragment by default when the app opens
         if (savedInstanceState == null) {
             getSupportFragmentManager().beginTransaction()
                     .replace(R.id.fragment_container, new DashboardFragment()).commit();
         }
 
-        // Handle navigation clicks
         bottomNav.setOnItemSelectedListener(item -> {
             Fragment selectedFragment = null;
 
@@ -33,9 +31,9 @@ public class MainActivity extends AppCompatActivity {
             if (itemId == R.id.nav_dashboard) {
                 selectedFragment = new DashboardFragment();
             } else if (itemId == R.id.nav_diagnostics) {
-                selectedFragment = new DiagnosticsFragment(); // <-- Uncommented!
+                selectedFragment = new DiagnosticsFragment();
             } else if (itemId == R.id.nav_history) {
-                // selectedFragment = new HistoryFragment();
+                selectedFragment = new HistoryFragment();
                 return true;
             }
 
