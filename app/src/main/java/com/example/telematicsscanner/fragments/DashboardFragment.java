@@ -1,4 +1,4 @@
-
+// app/src/main/java/com/example/telematicsscanner/fragments/DashboardFragment.java
 package com.example.telematicsscanner.fragments;
 
 import android.Manifest;
@@ -24,6 +24,9 @@ import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 
 import com.example.telematicsscanner.R;
+import com.example.telematicsscanner.database.AppDatabase;
+import com.example.telematicsscanner.database.TelemetryDao;
+import com.example.telematicsscanner.database.TelemetryLog;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -41,8 +44,9 @@ public class DashboardFragment extends Fragment {
     private InputStream inputStream;
     private OutputStream outputStream;
 
+    private boolean isPolling = false; // Controls our data loop
+
     private static final int PERMISSION_REQUEST_CODE = 100;
-    // This is the standard UUID for Serial Port Profile (SPP) devices like OBD-II scanners
     private static final UUID MY_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
 
     @Nullable
@@ -97,9 +101,7 @@ public class DashboardFragment extends Fragment {
         }
 
         tvStatus.setText("Scanning Paired Devices...");
-        tvStatus.setTextColor(getResources().getColor(android.R.color.holo_orange_dark));
 
-        // Get all devices currently paired to the phone
         if (ActivityCompat.checkSelfPermission(requireContext(), Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             return;
         }
@@ -109,7 +111,6 @@ public class DashboardFragment extends Fragment {
 
         if (pairedDevices.size() > 0) {
             for (BluetoothDevice device : pairedDevices) {
-                // OBD-II scanners usually have "OBD" in their name.
                 if (device.getName() != null && device.getName().toUpperCase().contains("OBD")) {
                     obdDevice = device;
                     break;
@@ -118,13 +119,11 @@ public class DashboardFragment extends Fragment {
         }
 
         if (obdDevice == null) {
-            Toast.makeText(getContext(), "No paired OBD-II scanner found. Please pair it in Android Bluetooth settings.", Toast.LENGTH_LONG).show();
+            Toast.makeText(getContext(), "No paired OBD-II scanner found.", Toast.LENGTH_LONG).show();
             tvStatus.setText("Disconnected");
-            tvStatus.setTextColor(getResources().getColor(android.R.color.holo_red_dark));
             return;
         }
 
-        // If we found it, try to connect!
         connectToDevice(obdDevice);
     }
 
@@ -135,47 +134,110 @@ public class DashboardFragment extends Fragment {
 
         tvStatus.setText("Connecting to " + device.getName() + "...");
 
-        // Network and Bluetooth connections MUST be done on a background thread in Android
         new Thread(() -> {
             try {
-                // Create the socket
                 bluetoothSocket = device.createRfcommSocketToServiceRecord(MY_UUID);
-                bluetoothAdapter.cancelDiscovery(); // Cancelling discovery speeds up the connection
-
-                // Attempt to connect to the hardware
+                bluetoothAdapter.cancelDiscovery();
                 bluetoothSocket.connect();
 
-                // If successful, grab the data streams
                 inputStream = bluetoothSocket.getInputStream();
                 outputStream = bluetoothSocket.getOutputStream();
 
-                // Update the UI on the main thread
                 requireActivity().runOnUiThread(() -> {
                     tvStatus.setText("Connected to ECU");
                     tvStatus.setTextColor(getResources().getColor(android.R.color.holo_green_dark));
-                    Toast.makeText(getContext(), "Hardware Linked Successfully!", Toast.LENGTH_SHORT).show();
                 });
 
+                // Phase 3 Starts Here!
+                isPolling = true;
+                startTelemetryLoop();
+
             } catch (IOException e) {
-                // If the connection fails
                 requireActivity().runOnUiThread(() -> {
                     tvStatus.setText("Connection Failed");
                     tvStatus.setTextColor(getResources().getColor(android.R.color.holo_red_dark));
-                    Toast.makeText(getContext(), "Ensure car is ON and scanner is plugged in.", Toast.LENGTH_LONG).show();
                 });
                 try {
                     if (bluetoothSocket != null) bluetoothSocket.close();
-                } catch (IOException closeException) {
-                    // Ignore
-                }
+                } catch (IOException closeException) {}
             }
         }).start();
+    }
+
+    // THE TELEMETRY LOOP
+    private void startTelemetryLoop() {
+        new Thread(() -> {
+            try {
+                // 1. Initialize ELM327 Hardware
+                sendCommand("ATZ\r"); Thread.sleep(1000); // Reset
+                sendCommand("ATE0\r"); Thread.sleep(500); // Echo Off
+                sendCommand("ATSP0\r"); Thread.sleep(500); // Auto-detect protocol
+
+                // 2. Initialize Local Database (Phase 4)
+                TelemetryDao dao = AppDatabase.getInstance(requireContext()).telemetryDao();
+
+                // 3. The Infinite Loop
+                while (isPolling && bluetoothSocket.isConnected()) {
+                    int currentRpm = -1;
+                    int currentTemp = -100;
+
+                    // --- Request RPM (Mode 01, PID 0C) ---
+                    String rpmHex = sendCommand("01 0C\r");
+                    if (rpmHex.contains("410C") && rpmHex.length() >= 8) {
+                        try {
+                            int a = Integer.parseInt(rpmHex.substring(4, 6), 16);
+                            int b = Integer.parseInt(rpmHex.substring(6, 8), 16);
+                            currentRpm = ((a * 256) + b) / 4;
+
+                            final int finalRpm = currentRpm;
+                            requireActivity().runOnUiThread(() -> tvRpm.setText(String.valueOf(finalRpm)));
+                        } catch (Exception e){ /* ignore parse error */ }
+                    }
+                    Thread.sleep(100); // Small delay between hardware requests
+
+                    // --- Request Coolant Temp (Mode 01, PID 05) ---
+                    String tempHex = sendCommand("01 05\r");
+                    if (tempHex.contains("4105") && tempHex.length() >= 6) {
+                        try {
+                            int a = Integer.parseInt(tempHex.substring(4, 6), 16);
+                            currentTemp = a - 40; // OBD-II formula for Temp
+
+                            final int finalTemp = currentTemp;
+                            requireActivity().runOnUiThread(() -> tvTemp.setText(finalTemp + " °C"));
+                        } catch (Exception e){ /* ignore parse error */ }
+                    }
+
+                    // --- Phase 4: Save to Offline Local Database ---
+                    if (currentRpm != -1 && currentTemp != -100) {
+                        TelemetryLog log = new TelemetryLog(System.currentTimeMillis(), currentRpm, String.valueOf(currentTemp));
+                        dao.insert(log); // Writes to SQLite without blocking UI
+                    }
+
+                    // Wait half a second before polling again
+                    Thread.sleep(400);
+                }
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                isPolling = false;
+            }
+        }).start();
+    }
+
+    // Helper method to send a command and read the response cleanly
+    private String sendCommand(String cmd) throws IOException {
+        outputStream.write(cmd.getBytes());
+        outputStream.flush();
+        byte[] buffer = new byte[1024];
+        int bytesRead = inputStream.read(buffer);
+        // Removes spaces and the ">" prompt character
+        return new String(buffer, 0, bytesRead).trim().replaceAll("\\s", "").replace(">", "");
     }
 
     @Override
     public void onDestroy() {
         super.onDestroy();
-        // Always close the socket when closing the app to prevent battery drain
+        isPolling = false;
         try {
             if (bluetoothSocket != null) bluetoothSocket.close();
         } catch (IOException e) {
