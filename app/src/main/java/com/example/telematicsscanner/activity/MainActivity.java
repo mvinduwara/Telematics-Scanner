@@ -34,7 +34,6 @@ public class MainActivity extends AppCompatActivity {
                 selectedFragment = new DiagnosticsFragment();
             } else if (itemId == R.id.nav_history) {
                 selectedFragment = new HistoryFragment();
-                return true;
             }
 
             if (selectedFragment != null) {
