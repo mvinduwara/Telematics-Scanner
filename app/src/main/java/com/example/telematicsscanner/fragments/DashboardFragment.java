@@ -44,7 +44,7 @@ public class DashboardFragment extends Fragment {
     private InputStream inputStream;
     private OutputStream outputStream;
 
-    private boolean isPolling = false; // Controls our data loop
+    private boolean isPolling = false;
 
     private static final int PERMISSION_REQUEST_CODE = 100;
     private static final UUID MY_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
@@ -148,7 +148,6 @@ public class DashboardFragment extends Fragment {
                     tvStatus.setTextColor(getResources().getColor(android.R.color.holo_green_dark));
                 });
 
-                // Phase 3 Starts Here!
                 isPolling = true;
                 startTelemetryLoop();
 
@@ -168,20 +167,16 @@ public class DashboardFragment extends Fragment {
     private void startTelemetryLoop() {
         new Thread(() -> {
             try {
-                // 1. Initialize ELM327 Hardware
                 sendCommand("ATZ\r"); Thread.sleep(1000); // Reset
                 sendCommand("ATE0\r"); Thread.sleep(500); // Echo Off
                 sendCommand("ATSP0\r"); Thread.sleep(500); // Auto-detect protocol
 
-                // 2. Initialize Local Database (Phase 4)
                 TelemetryDao dao = AppDatabase.getInstance(requireContext()).telemetryDao();
 
-                // 3. The Infinite Loop
                 while (isPolling && bluetoothSocket.isConnected()) {
                     int currentRpm = -1;
                     int currentTemp = -100;
 
-                    // --- Request RPM (Mode 01, PID 0C) ---
                     String rpmHex = sendCommand("01 0C\r");
                     if (rpmHex.contains("410C") && rpmHex.length() >= 8) {
                         try {
@@ -191,29 +186,25 @@ public class DashboardFragment extends Fragment {
 
                             final int finalRpm = currentRpm;
                             requireActivity().runOnUiThread(() -> tvRpm.setText(String.valueOf(finalRpm)));
-                        } catch (Exception e){ /* ignore parse error */ }
+                        } catch (Exception e){  }
                     }
-                    Thread.sleep(100); // Small delay between hardware requests
+                    Thread.sleep(100);
 
-                    // --- Request Coolant Temp (Mode 01, PID 05) ---
                     String tempHex = sendCommand("01 05\r");
                     if (tempHex.contains("4105") && tempHex.length() >= 6) {
                         try {
                             int a = Integer.parseInt(tempHex.substring(4, 6), 16);
-                            currentTemp = a - 40; // OBD-II formula for Temp
+                            currentTemp = a - 40;
 
                             final int finalTemp = currentTemp;
                             requireActivity().runOnUiThread(() -> tvTemp.setText(finalTemp + " °C"));
-                        } catch (Exception e){ /* ignore parse error */ }
+                        } catch (Exception e){}
                     }
 
-                    // --- Phase 4: Save to Offline Local Database ---
                     if (currentRpm != -1 && currentTemp != -100) {
                         TelemetryLog log = new TelemetryLog(System.currentTimeMillis(), currentRpm, String.valueOf(currentTemp));
-                        dao.insert(log); // Writes to SQLite without blocking UI
+                        dao.insert(log);
                     }
-
-                    // Wait half a second before polling again
                     Thread.sleep(400);
                 }
 
@@ -224,13 +215,11 @@ public class DashboardFragment extends Fragment {
         }).start();
     }
 
-    // Helper method to send a command and read the response cleanly
     private String sendCommand(String cmd) throws IOException {
         outputStream.write(cmd.getBytes());
         outputStream.flush();
         byte[] buffer = new byte[1024];
         int bytesRead = inputStream.read(buffer);
-        // Removes spaces and the ">" prompt character
         return new String(buffer, 0, bytesRead).trim().replaceAll("\\s", "").replace(">", "");
     }
 
