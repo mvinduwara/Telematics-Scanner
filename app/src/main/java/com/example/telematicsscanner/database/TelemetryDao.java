@@ -1,4 +1,3 @@
-// app/src/main/java/com/example/telematicsscanner/database/TelemetryDao.java
 package com.example.telematicsscanner.database;
 
 import androidx.room.Dao;
