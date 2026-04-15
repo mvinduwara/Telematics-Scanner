@@ -12,12 +12,12 @@ public class TelemetryLog {
     public long timestamp;
     public int engineRpm;
     public String coolantTemp;
-    public boolean isSyncedWithCloud; // This acts as our flag for the background worker
+    public boolean isSyncedWithCloud;
 
     public TelemetryLog(long timestamp, int engineRpm, String coolantTemp) {
         this.timestamp = timestamp;
         this.engineRpm = engineRpm;
         this.coolantTemp = coolantTemp;
-        this.isSyncedWithCloud = false; // Default to false until the PHP server confirms receipt
+        this.isSyncedWithCloud = false;
     }
 }
