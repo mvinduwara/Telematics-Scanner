@@ -123,7 +123,6 @@ public class DashboardFragment extends Fragment {
             tvStatus.setText("Disconnected");
             return;
         }
-
         connectToDevice(obdDevice);
     }
 
